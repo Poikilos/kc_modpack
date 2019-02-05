@@ -5,7 +5,8 @@ if [ -d "$try_path" ]; then
   MT_MYGAME_MODS_PATH="$try_path"
 fi
 if [ ! -d "$MT_MYGAME_MODS_PATH" ]; then
-  echo "The subgame $MT_MYGAME_MODS_PATH was not found"
+  echo "The subgame $MT_MYGAME_MODS_PATH was not found,"
+  echo "so you'll have to install this mod yourself."
   sleep 4
   exit 1
 else
