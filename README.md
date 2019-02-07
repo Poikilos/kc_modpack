@@ -11,3 +11,7 @@ Kinetic Combat for minetest
 
 ## Known Issues
 * implement all of the above (this modpack doesn't do anything yet)
+
+## Developer Notes
+### Brainstorms
+* _ Table names: Workshop, Mastery, Adept, Ace, Masterwork, Master, Guru, Grand, Maven, Engineer, Experiment, R&D, Study, Dabble, Trifle, Opus
