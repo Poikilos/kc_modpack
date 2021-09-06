@@ -2,19 +2,19 @@
 Kinetic Combat for minetest
 
 ## Primary Features
-* ducking and defending
-* high and low attacks
-* a unique non-fantasy stat system with character building
-* transient stats used to perform techniques
-* mobs eventually should be programmed with all of the above
-* transient stats can alternatively be used to create equipment enhancements (but not how you're thinking)
+* Duck or defend.
+* Attack high or low.
+* Use a unique non-fantasy stat system with character building.
+* Use transient stats used to perform techniques.
+* Unify the interface (API) for the player entity and mobs:
+  * Each mob should get all of the features above.
+  * Unify of methods for determining damage including based on armor and environment.
+* transient stats can alternatively be used to create equipment enhancements.
 
 ## Known Issues
-* implement all of the above (this modpack doesn't do anything yet)
-* overwrite xdecor:enchantment_table
+* Implement all of the above (This modpack doesn't do anything yet.)
+* Overwrite xdecor:enchantment_table with the main `kc:` node.
 
-## Developer Notes
-### Brainstorms
-* Table names: Workshop, Mastery, Adept, Ace, Masterwork, Master, Guru, Grand, Maven, Engineer, Experiment, R&D, Study, Dabble, Trifle, Opus
-  - War Table
-  - Masterwork Foundry
+
+## Development
+For how to develop the modpack, see [contributing.md](contributing.md).
