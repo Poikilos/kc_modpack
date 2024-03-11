@@ -9,7 +9,7 @@ Kinetic Combat for minetest
 * Unify the interface (API) for the player entity and mobs:
   * Each mob should get all of the features above.
   * Unify of methods for determining damage including based on armor and environment.
-* transient stats can alternatively be used to create equipment enhancements.
+* Transient stats can alternatively be used to create equipment enhancements.
 
 ## Known Issues
 * Implement all of the above (This modpack doesn't do anything yet.)
@@ -17,4 +17,4 @@ Kinetic Combat for minetest
 
 
 ## Development
-For how to develop the modpack, see [contributing.md](contributing.md).
+For goals and how to get involved, see [development.md](development.md).
