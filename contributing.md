@@ -1,5 +1,5 @@
-# Contributing
-This file describes how to develop the modpack.
+# Development
+This planning document can help the maintainer and contributors work toward the goals of the modpack.
 
 From IRC Aug 12, 2019 messages by Poikilos
 
@@ -16,13 +16,26 @@ Most of the other information below (under "Bounded accuracy", "Balancing" and "
 - September 9, 2019
 - June 15, 2019
 
+Related documents:
+- [Kinetic Combat vs RPG-Like Elements in Video Games](https://poikilos.org/2023/09/06/kinetic-combat-vs-rpg-like-elements-in-video-games/)
+
 ## Bounded accuracy
-"Heal" and "Level" are broken concepts:
-In ~2017 student feedback said that shields seemed to reduce chance (not amount) of damage, which made sense. I don't know whether they were right.
-As it stands, there seems to be little to no change involved with getting hit.
-The armor level and damage or randomNumber%damage should be used and determine odds rather than an damage being used directly.
+
+Currently, the 3d_armor modpack is the primary defense system for Minetest. There are 6 wearable slots, for helmet, chestplate, leggings, boots, shield, and potentially an anti-radiation suit or other accessory. For the four that are actually "armor" each has a "Heal" (damage absorption) and "Level" (must be surpassed to receive damage). However, "Heal" and "Level" are broken concepts:
+* In ~2017 student feedback said that shields seemed to reduce chance (not amount) of damage, which made sense. I don't know whether they were right.
+  * As it stands, there seems to be little to no variation involved with getting hit.
+* Getting hit with diamond armor is nearly impossible, and when it occurs, there may be so much total "Heal" among worn items that you are healed rather than damaged (subtracting a negative is fixed now I think, but still if 0 is the result, combat is equally boring as it has no stakes).
+
+There should be an upper limit to how fast an entity can strike. If mobs have to wait for their animation to complete but players can strike as fast as they can click, there is no challenge. If two players are fighting, a click speed contest is not interesting combat, and
+- lends itself to "twitchy" gameplay (Only a subset of gamers like "twitchy" games, often not intersecting mature players, nor intersecting those who play sandbox games in general other than young players including those who pursue megalomania or griefing as their main goals)
+- and is highly susceptible to cheats (macros and other client-side automation)
+
+A solution is to implement some type of "cooldown" system. Cooldown is the time between actions. In many games, cooldown time applies to each type of strike or ability (A powerful ability typically has a long cooldown, up to a whole day or sleeping, but the entity can do lesser abilities while that one is cooling down). Perhaps if clicks are less than a half second apart, there is little chance for damage and the damage is low, but if they are a second apart, it is maximized. A bonus could be given for "lock on" time, such as if the target is in the reticle (minetest.raycast using attacker's rotation values) during that second. The recovery time should be shown on the screen somehow. This is controversial when implemented long after a game is developed, but probably would only help Minetest since combat was always lacking (was never kinetic nor RPG-like).
+
+The armor level and damage or `randomNumber % damage` (remainder of division) should be used and determine odds rather than an damage being used directly.
 * The shield should especially affect hit/miss ratio, but only when you're not attacking.
 * Holding the special key could be defend, and further increase blocking but delay the time until your next attack.
+* Attacking between the start of the opposing entity's animation but before its damage starts should create a "parry" condition, possibly nullifying both strikes and/or lowering the opposing entity's defense until its recovery time is complete.
 * All of the above should happen with both enemies and players attacking you, but not lava and other hazards presumably (maybe boots would prevent walk damage--I still would like a walk_damage=1 group capability to use for the dark walkable lava).
   - Lets just make the dang globalstep always happen, not just when armor_protect_water or armor_fire_protect is true. We could even make new walk_hot and walk_piercing damage groups on nodes and make the same globalstep check nodes under you.
 
@@ -136,14 +149,44 @@ The leashes are amazing too (they stretch, can lead multiple mobs, and a mob can
 ~~<https://www.youtube.com/watch?v=r_IZCJC8Zs0>~~ (The video is marked private now :( )
 
 
-## Use of assets
+## Combat Events
 
-1. Storing the models at 60fps never made sense, since Irrlicht does all frame blending. I could alter the animations as we go so that only the keyframes are kept so the files should be about half the size or less. I have found that reducing Big Red from 60fps to 6fps reduces the B3D file to about 1/2 of the size (I'm not sure why not smaller--maybe some type of compression is already done). However, some manual steps are needed to make sure that the end frames and start frames don't get crunched when scaling all keyframes in the Blender dopesheet. Many sequences can be reduce to 2 or 3 frames, or ONE frame (such as for poses), or at most 5 (such as for walking or certain attacks).
+Make audio and visual feedback. Override mobs API, keeping the features optional (on a per-mob basis), or maybe add a special mob registration function that creates necessary callbacks then uses the mobs redo API as a backend.
 
-2. Leveraging the client is a big part of any kind of server optimization. Ensure that the server only sends keyframe cycles instead of frame cycles, and definitely not send network traffic for every frame.
-   - Do some Irrlicht experiments with that (transitioning between arbitrary poses) in the b3view code.
+Combat events can be split into 3 stages: Aggro, Approach, and Strike (See sections below for each). They usually occur in that order, but they may occur out of order to make the game more interesting:
+- Approach then Aggro (mob may approach you, but not intend harm until given a reason)
+- No approach: A mob acting as a guard may have a ranged weapon and attack as soon as a valid target is recognized
 
-Some measure of interactivity, even just visual and/or audio cues, should be present (gamers notice there is something lacking). See "Consistent color flashes" and "Sounds".
+See [Aggro](#aggro) below regarding reasons to attack.
+
+### Approach
+The enemy's approach being in a straight line without stopping is the least interesting type of attack, even though it is common. Ways to make it more interesting:
+- Have more ranged enemies (with bows, breath attacks, or throwing objects or bombs)
+- [x] Add better pathfinding (accomplished more or less using pathlib properly)
+
+### Aggro
+Provoking or more generally "aggro" is a concept throughout games regarding what causes an enemy attack. We can separate the aspects of attack between approaching (usually with intent to strike), and striking itself. However, the decision that occurs before that involves validating a target, when the mob is aggravated, usually called "aggro". Striking and Approach are discussed elsewhere, but this section describes the decision approach and/or strike. Some enemies may become "aggro" (aggravated, start trying to strike) only under certain conditions, which makes even the surface-level of encounters (the pre-strike or even pre-aggro aspect of the encounter) varied and interesting, and have a sense of suspense. Generally modern games have ways to provoke enemies unintentionally, and sometimes intentionally ("provoke" proper). The least complex and least interesting logic is "attack player when in range".
+
+Specific actions or wearable items may provoke or prevent provoking specific mobs.
+
+Prevent provocation:
+- Wear a mask of the given mob (See [Make mob head system](#mob-head-system))
+
+Cause provocation:
+- (from 5/5/19 12:35 AM ET e-mail by Poikilos) Add a low-permission /provoke command to kc_modpack which can either succeed or fail (call /hostile on favorable random number) and have a cooldown, allowing for some fun RPG action.
+
+- attacking the mob (may override preventions)
+
+### Strike
+A strike is when an actual attack is attempted through a melee or ranged weapon or natural weapon (punching etc). A strike can have multiple outcomes:
+- Hit
+- Missed
+- Hit but damage was absorbed
+  - The current system in Minetest allows the "heal" aspect to absorb all of the damage, and potentially even make the player end up with more HP than before hit. This should be changed to be more interesting. If there is no way for combat to end, combat isn't interesting as there are no stakes. A better outcome would be that the hit always damages armor and/or the player to some extent. See the [Bounded accuracy][#bounded-accuracy] section for more info.
+
+There should be other interesting combat actions other that striking as well. This is discussed further in the [Animations](#animations) section and at the Kinetic Combat article: [Kinetic Combat vs RPG-Like Elements in Video Games](https://poikilos.org/2023/09/06/kinetic-combat-vs-rpg-like-elements-in-video-games/).
+
+Sections below show ways to represent different outcomes of a strike with different audio and visuals.
 
 ### Consistent color flashes
 [Make all mobs and players flash red when damaged, but flash white on block/parry or otherwise not damaged #257](https://github.com/poikilos/EnlivenMinetest/issues/257).
@@ -164,11 +207,8 @@ fades out nicely, but combat would be more clear if):
 
 (1:07 PM ET) According to that pattern I suggested, the clam would flash gray when attacked while closed, since it apparently deflects 100% of damage at that time (it currently doesn't flash at all when closed and they are usually closed, which is confusing--a player on my server thought clams were invincible).
 
+### Animations
 
-### Unify actions and feedback
-Override mobs api to keep the features optional if possible.
-
-#### Animations
 For combat visuals, the player and mob should have the same animation, so that virtually limitless patterns (combinations of moves and ducking, transitions, interruptions of attack swings in any order) of combat can be done procedurally without significant work on the part of the server. See [issues with the kc_modpack tag on EnlivenMinetest](https://github.com/poikilos/EnlivenMinetest/issues?q=is%3Aissue+is%3Aopen+label%3Akc_modpack) for more.
 
 Implement at least the following sequences for the player and matching ones every hostile mob: idle, idle weapon drawn, duck, high block, get damaged, low block, dodge, leap, walk, run, high attack, low attack, provoke, death
@@ -179,15 +219,24 @@ Implement at least the following sequences for the player and matching ones ever
   - Around 4 times as much functionality, but 1/20 of the frames in the B3D file!
 - Type-dependent: fly, swim, takeoff, land
 
-##### Bone-based animation
+#### Use of assets
+
+1. Storing the models at 60fps never made sense, since Irrlicht does all frame blending. I could alter the animations as we go so that only the keyframes are kept so the files should be about half the size or less. I have found that reducing Big Red from 60fps to 6fps reduces the B3D file to about 1/2 of the size (I'm not sure why not smaller--maybe some type of compression is already done). However, some manual steps are needed to make sure that the end frames and start frames don't get crunched when scaling all keyframes in the Blender dopesheet. Many sequences can be reduce to 2 or 3 frames, or ONE frame (such as for poses), or at most 5 (such as for walking or certain attacks).
+
+2. Leveraging the client is a big part of any kind of server optimization. Ensure that the server only sends keyframe cycles instead of frame cycles, and definitely not send network traffic for every frame.
+   - Do some Irrlicht experiments with that (transitioning between arbitrary poses) in the b3view code.
+
+Some measure of interactivity, even just visual and/or audio cues, should be present (gamers notice there is something lacking). See "Consistent color flashes" and "Sounds".
+
+#### Mob head system
+Make a registration function that takes a static head model.
+- Normally make it a hollow block with 1px thick (1/32 meter) outer part where the hollow part is head-sized so it is intuitively able to be used as a mask.
+
+
+#### Bone-based animation
 - [ ] Make the mob look at you when you are its target regardless of the direction it is walking (The direction its body is facing should be different from the head if not walking toward you but targeting you).
 
-##### Provoke
-(from 5/5/19 12:35 AM ET e-mail by Poikilos)
-Add a low-permission /provoke command to kc_modpack which can either succeed or fail (call /hostile on favorable random number) and have a cooldown, allowing for some fun RPG action.
-
-
-#### Visuals for attack outcomes
+#### Visuals for strike outcomes
 A stopgap (possibly that could be kept even after new sequences are implemented) feature to make the battle process more understandable visually (somehow represent what is happening in the code) is attack sprites (such as a big bite mark that appears in the air only for a flash when the creature attacks). Blocking and showing a shield sprite could also be done.
 
 [bite](kc/textures/kc_attack_bite_glow.png)
@@ -204,16 +253,15 @@ A stopgap (possibly that could be kept even after new sequences are implemented)
       - [ ] Use the old Sapier animated version of the fireball.
       - [ ] Allow setting the particle size (and size variance, lifespan, and lifespan variance?) See email: 4/17/19 11:51 AM ET
 
-
-#### Visuals for storytelling or multiplayer
-Sprites for emotes would be just as easy to implement (just little symbols similar to above but for emotions), even for role playing bosses/NPCs such as for minigames or dungeons. I may implement the option to show emote sprites on the player if what they type in chat contains an emote (such as :) or :smile:).
-
-#### Sounds
+### Sounds
 get hurt, attack, provoke [could also be for spell/skill like the identically-named animation sequence])
 
-##### Warcry
+#### Warcry
 [If war_cry is set, war cry plays every time you click the mob #269](https://github.com/poikilos/EnlivenMinetest/issues/269)
 - See also email 5/24/19 9:01 AM ET
+
+## Visuals for storytelling or multiplayer
+Sprites for emotes would be just as easy to implement (just little symbols similar to above but for emotions), even for role playing bosses/NPCs such as for minigames or dungeons. I may implement the option to show emote sprites on the player if what they type in chat contains an emote (such as :) or :smile:).
 
 ### Brainstorms
 #### Node name ideas
