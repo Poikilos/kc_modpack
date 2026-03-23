@@ -1,0 +1,35 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"cSpell.words": [
+			"chestplate",
+			"cooldown",
+			"cstdargs",
+			"despawning",
+			"dopesheet",
+			"facedir",
+			"globalstep",
+			"Ibanez",
+			"Irrlicht",
+			"itemstack",
+			"luaentity",
+			"Luanti",
+			"minetest",
+			"minigames",
+			"modpack",
+			"nethack",
+			"paramtype",
+			"pathfinding",
+			"playername",
+			"Poikilos",
+			"Sapier",
+			"timecode",
+			"warcry",
+			"xdecor"
+		]
+	}
+}
