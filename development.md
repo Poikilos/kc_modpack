@@ -1,0 +1,274 @@
+# Development
+This planning document can help the maintainer and contributors work toward the goals of the modpack.
+
+From IRC Aug 12, 2019 messages by Poikilos
+
+The primary aspects of "Kinetic Combat" would be that position and timing affect whether or not an attack lands. You only have to check "defend" (target is holding use key, or mob is defending). Later on we could check whether you're attacking from behind, etc.
+
+Ramping means you use addition and subtraction to calculate damage and defense. Both your stats and the enemies stats keep getting higher. It is even more exciting when the ramping is not constant and every once it a while there is a greater challenge.
+
+Bounded accuracy could be implemented much more easily, by making the damage pseudocode I posted into real code (See "Damage calculation").
+
+Most of the other information below (under "Bounded accuracy", "Balancing" and "Use of assets") is from e-mails by Poikilos (multiple on same day in some cases):
+- April 7, 2019
+- April 8, 2019
+- August 8, 2019
+- September 9, 2019
+- June 15, 2019
+
+Related documents:
+- [Kinetic Combat vs RPG-Like Elements in Video Games](https://poikilos.org/2023/09/06/kinetic-combat-vs-rpg-like-elements-in-video-games/)
+
+## Bounded accuracy
+
+Currently, the 3d_armor modpack is the defense system for most Luanti games. There are 6 wearable slots, for helmet, chestplate, leggings, boots, shield, and potentially an anti-radiation suit or other accessory. For the four that are actually "armor" each has a "Heal" (damage absorption) and "Level" (must be surpassed to receive damage). However, "Heal" and "Level" are broken concepts:
+* In ~2017 student feedback said that shields seemed to reduce chance (not amount) of damage, which made sense. I don't know whether they were right.
+  * As it stands, there seems to be little to no variation involved with getting hit.
+* Getting hit with diamond armor is nearly impossible, and when it occurs, there may be so much total "Heal" among worn items that you are healed rather than damaged (subtracting a negative is fixed now I think, but still if 0 is the result, combat is equally boring as it has no stakes).
+
+There should be an upper limit to how fast an entity can strike. If mobs have to wait for their animation to complete but players can strike as fast as they can click, there is no challenge. If two players are fighting, a click speed contest is not interesting combat, and
+- lends itself to "twitchy" gameplay (Only a subset of gamers like "twitchy" games, often not intersecting mature players, nor intersecting those who play sandbox games in general other than young players including those who pursue megalomania or griefing as their main goals)
+- and is highly susceptible to cheats (macros and other client-side automation)
+
+A solution is to implement some type of "cooldown" system. Cooldown is the time between actions. In many games, cooldown time applies to each type of strike or ability (A powerful ability typically has a long cooldown, up to a whole day or sleeping, but the entity can do lesser abilities while that one is cooling down). Perhaps if clicks are less than a half second apart, there is little chance for damage and the damage is low, but if they are a second apart, it is maximized. A bonus could be given for "lock on" time, such as if the target is in the reticle (`minetest.raycast` using attacker's rotation values) during that second. The recovery time should be shown on the screen somehow. This is controversial when implemented long after a game is developed, but probably would only help Luanti since combat was always lacking (was never kinetic nor RPG-like).
+
+The armor level and damage or `randomNumber % damage` (remainder of division) should be used and determine odds rather than an damage being used directly.
+* The shield should especially affect hit/miss ratio, but only when you're not attacking.
+* Holding the special key could be defend, and further increase blocking but delay the time until your next attack.
+* Attacking between the start of the opposing entity's animation but before its damage starts should create a "parry" condition, possibly nullifying both strikes and/or lowering the opposing entity's defense until its recovery time is complete.
+* All of the above should happen with both enemies and players attacking you, but not lava and other hazards presumably (maybe boots would prevent walk damage--I still would like a walk_damage=1 group capability to use for the dark walkable lava).
+  - Lets just make the dang globalstep always happen, not just when armor_protect_water or armor_fire_protect is true. We could even make new walk_hot and walk_piercing damage groups on nodes and make the same globalstep check nodes under you.
+
+Even hoards of enemies in SB's nethack castle cannot harm me no matter how long I stand there, with any of these armor combinations:
+
+```
+Level,Heal,What
+63,48,Full Diamond armor except shield
+49.5,36,Diamond armor except shield, helmet
+49.5,36,Diamond armor except shield, boots
+45,36,Diamond armor except shield, pants
+45,36,Diamond armor except shield, chestplate
+58.5,48,Diamond armor except chestplate (this is the only test I did with a shield)
+```
+
+It's fun.
+
+See "Damage calculation" for more details and pseudocode.
+
+### Damage calculation
+Some of this code may be moved to an expanded "cmi" mod that is also able to manage the player character `luaentity`.
+
+To make damage calculation consistent and compatible with existing mods
+1. damage should be calculated using groups
+2. damage should be calculated the same way if attacker is player, mob, or environment
+
+So far I think I can implement pretty much everything (see [EN#321](https://github.com/Poikilos/Enliven/issues/321)) using mods, except for:
+
+I am having trouble with point 1 above. I can set source myself in all other situations (such as in 3d_armor, mobs, and other calls to set_hp) other than damage_per_second. I can try to change the related code if you need help, but I need to know whether it would be backward compatible, and whether to use cstdargs named params (and whether that is sufficient and necessary for backward compatibility) if the damage_per_second code is in C++ (it seems to be).
+
+current callback:
+some_hp_change_handler(player, hp_change)
+
+* I capitalized parts where I don't know the variable names below.
+
+1. suggested callback:
+some_hp_change_handler(player, hp_change, damage_source)
+-- where damage_source is optional when used in Lua, for backward compatibility
+
+2. suggested change to engine's damage_per_second code:
+- use the set_hp or whatever it does already, but always provide 3rd param (PLAYER,HP_CHANGE,damage_sources = {groups=NODE.groups, node=NODE})
+
+3. suggested change to engine's PvP attack code:
+- (PLAYER,HP_CHANGE,damage_source = {groups=ATTACKER.SELECTED_ITEM.groups, player=ATTACKER})
+
+Everything below this sentence is documentation for damage_sources (I can add the documentation to the patch once everything is settled, or you can add the text below with changes if necessary).
+
+**damage_source**
+- The "groups" param usually has to be at least { fleshy = 1} to do anything, but groups are technically a completely game-defined feature (though they are part of what could be the "extended API" and universally used apart from damage_per_second in versions without damage_source).
+- Mods could set any of the params manually to simulate actions (when calling set_hp manually), such as if getting a point in a board game hurts the opposing player (set player and groups in such cases).
+
+```Lua
+damage_source.missile -- mob or other mods can set this so that the mod or other mods know whether to handle hp change event differently (such as to prevent some kind of "spiked armor" from hurting the attacker if missile is not nil)
+damage_source.object -- can be a player or a mob (see similar implementation in `function mob_class:collision()` in mobs/api.lua).
+damage_source.player  -- ONLY reserved for cases if different than object, such as if object is a pet, in which case player would be the owner. Player can also be the owner of a node or missile for combat purposes, to provide a unified interface (there are redundant but varying mechanisms in those cases inside individual mods, such as arrow's owner in mobs mods' or node's owner in protection mods).
+damage_source.itemstack -- Reference the item that the player or mob actually used.
+damage_source.node -- The game (engine?) should set this automatically if damage_per_second >0
+damage_source.pos -- In case the source location is not traceable such as a node, this is the position in the world
+damage_source.groups -- The game (engine?) should set this automatically if damage_per_second >0, or if player attacks player (selected item's groups, but only if one of the groups is weapon, otherwise use fist's fleshy group value as only group)
+```
+
+### on_killing_callback
+#### Getting mob Variables from Engine object is Possible
+In reading the api.lua, thought I should share my findings which may be helpful for other issues:
+I found out I can get any properties without passing the mob class:
+since (where obj is an engine object that you can get directly from an engine event or object search) obj:get_luaentity() is equivalent to mob (of course, obj is equivalent to mob.object).
+* This may be helpful in various situations--in my case it answers the earlier question: on_killing callback will only need 4 params (playername1, obj1, playername1, obj2) [not 6 (playername1, obj1, playername1, obj2, mob1, mob2)]
+
+
+## Balancing
+Users on my school (former) server who came from the most popular sandbox game rolled their eyes and accepted Luanti's combat since it was a reward for being finished their computer assignments, but still said there is really no challenge or monsters are too hard, depending on what mob they encountered.
+- Show tree monsters near forests and harder mobs in caves.
+
+Regarding population and spawn_by removal during debugging: having to increase that chance  by at least 50 (or whatever would have been the chance of whatever the spawn_by node occurring in the world) after removing spawn_by to get a similar population seems like expected behavior.
+
+### Pathfinding
+Pathfinding is part of balancing since without good pathfinding, mobs can "cheat" or act "stupid". Either extreme is a glaring problem.
+
+Critical issues gamers notice:
+- [ ] mobs attacking through corners (https://github.com/Poikilos/Enliven/issues/62) and
+- [ ] trying to walk up 2-high barriers (at least that aspect of: https://github.com/Poikilos/Enliven/issues/64), and
+- [ ] https://github.com/Poikilos/Enliven/issues/573 failing to jump up 1-high barriers (TODO: test this)
+- [x] https://github.com/Poikilos/Enliven/issues/3 (resolved in mobs_redo; formerly issue 3 on Enliven) friendly mobs despawning
+
+#### open_ai
+Jordan4Ibanez helped make Mob Framework before he made OpenAI (little used but highly developed).
+Jordan4Ibanez implemented some amazing pathfinding, using predictive "breadcrumb" sprites for fast debugging: ~~<http://www.youtube.com/watch?v=b_ZUPTYRh54&t=115m48s>~~ (The video is marked private now :( )
+His code may be good for a look even though he did it inside his own mobs API: https://forum.minetest.net/viewtopic.php?t=16032
+
+```
+git clone https://github.com/jordan4ibanez/open_ai.git
+```
+
+In his dev vlog he said that making a copy of the pathfinding/AI module on each mob speeded up huge flocks of mobs significantly vs processing that many mobs centrally.
+I'm not sure whether this can be accomplished trivially using separate timers, of if Mobs Redo already breaks up the processing in some way so the processing doesn't become blocky (blocking other processes).
+I would like to compare the performance but I would have to program a command to spawn an arbitrary number of mobs at once.
+~~<https://www.youtube.com/watch?v=tL5WbrgKGAg&t=3m33s>~~ (The video is marked private now :( )
+
+He did something like put an AI module inside of the mob instead of having a loop in the mod that processes all mobs.
+I found the video and timecode where he moves functions to the LUA entity to drastically increase performance of open_ai:
+~~https://www.youtube.com/watch?v=2rDkQWi-RA4&t=31m50s>~~ (The video is marked private now :( )
+Considering he was just switching to an accepted software development paradigm, it would be not surprising if mobs redo already do things that way.
+I see now Jordan4Ibanez was pretty much just moving global functions to the LUA entity which is normal in object-oriented programming (though I understand some of the Luanti core API was rather procedural like the original function for checking falling nodes etc).
+
+- [ ] Needs verification: disregard until after doing performance tests with /se command (such as with 100+ mobs).
+
+The date of video above is Jan 3, 2017, which indicates that the corresponding commits (rather large since refactoring) would be in or around:
+* https://github.com/jordan4ibanez/open_ai/commit/28c64d3eb49ef21b1402d0af69403b2035f8647f "Beginning of classifying things" Jan 3, 2017
+* https://github.com/jordan4ibanez/open_ai/commit/9c099aa102e6d5971db69464f5e87276951a749a "improved pathfinding" Jan 3, 2017
+* https://github.com/jordan4ibanez/open_ai/commit/13961ab9ac6e3512ec6326a9be0aae40f569eb0d "Push more things into library" Jan 6, 2017
+* https://github.com/jordan4ibanez/open_ai/commit/f3310b2211d8f5a683c15accb46ee5ad5e3c703f "Finish turning code into a library" Jan 6, 2017
+
+The leashes are amazing too (they stretch, can lead multiple mobs, and a mob can hang from them and be pulled up):
+~~<https://www.youtube.com/watch?v=r_IZCJC8Zs0>~~ (The video is marked private now :( )
+
+
+## Combat Events
+
+Make audio and visual feedback. Override mobs API, keeping the features optional (on a per-mob basis), or maybe add a special mob registration function that creates necessary callbacks then uses the mobs redo API as a backend.
+
+Combat events can be split into 3 stages: Aggro, Approach, and Strike (See sections below for each). They usually occur in that order, but they may occur out of order to make the game more interesting:
+- Approach then Aggro (mob may approach you, but not intend harm until given a reason)
+- No approach: A mob acting as a guard may have a ranged weapon and attack as soon as a valid target is recognized
+
+See [Aggro](#aggro) below regarding reasons to attack.
+
+### Approach
+The enemy's approach being in a straight line without stopping is the least interesting type of attack, even though it is common. Ways to make it more interesting:
+- Have more ranged enemies (with bows, breath attacks, or throwing objects or bombs)
+- [ ] Add better pathfinding (accomplished more or less using [[mod] New Pathfinder [wip][pathfinder]](https://forum.luanti.org/viewtopic.php?t=17406&sid=114dd3b49c1272951d0e91e044d27288) `pathfinder.find_path` or `minetest.find_path` properly :edit: Engine's may be improved [not tested after ~2018], and is more performant)
+
+### Aggro
+Provoking or more generally "aggro" is a concept throughout games regarding what causes an enemy attack. We can separate the aspects of attack between approaching (usually with intent to strike), and striking itself. However, the decision that occurs before that involves validating a target, when the mob is aggravated, usually called "aggro". Striking and Approach are discussed elsewhere, but this section describes the decision approach and/or strike. Some enemies may become "aggro" (aggravated, start trying to strike) only under certain conditions, which makes even the surface-level of encounters (the pre-strike or even pre-aggro aspect of the encounter) varied and interesting, and have a sense of suspense. Generally modern games have ways to provoke enemies unintentionally, and sometimes intentionally ("provoke" proper). The least complex and least interesting logic is "attack player when in range".
+
+Specific actions or wearable items may provoke or prevent provoking specific mobs.
+
+Prevent provocation:
+- Wear a mask of the given mob (See [Make mob head system](#mob-head-system))
+
+Cause provocation:
+- (from 5/5/19 12:35 AM ET e-mail by Poikilos) Add a low-permission /provoke command to kc_modpack which can either succeed or fail (call /hostile on favorable random number) and have a cooldown, allowing for some fun RPG action.
+
+- attacking the mob (may override preventions)
+
+### Strike
+A strike is when an actual attack is attempted through a melee or ranged weapon or natural weapon (punching etc). A strike can have multiple outcomes:
+- Hit
+- Missed
+- Hit but damage was absorbed
+  - The current system in Luanti allows the "heal" aspect to absorb all of the damage, and potentially even make the player end up with more HP than before hit. This should be changed to be more interesting. If there is no way for combat to end, combat isn't interesting as there are no stakes. A better outcome would be that the hit always damages armor and/or the player to some extent. See the [Bounded accuracy][#bounded-accuracy] section for more info.
+
+There should be other interesting combat actions other that striking as well. This is discussed further in the [Animations](#animations) section and at the Kinetic Combat article: [Kinetic Combat vs RPG-Like Elements in Video Games](https://poikilos.org/2023/09/06/kinetic-combat-vs-rpg-like-elements-in-video-games/).
+
+Sections below show ways to represent different outcomes of a strike with different audio and visuals.
+
+### Consistent color flashes
+[Make all mobs and players flash red when damaged, but flash white on block/parry or otherwise not damaged #257](https://github.com/Poikilos/Enliven/issues/257).
+- block (whenever a hit does no damage)
+- stun: flash the mob with a lighter/tinted color for a 250 milliseconds
+  - solid white for block
+  - solid red for damage
+  - flash the color to about 50% opacity over the client's whole screen then fade out if it is the player being hurt or blocking).
+
+From 4/17/19 11:59 AM ET email:
+
+It is the mummy that flashes red when attacked (at least with 190413), but near death it flashed white. I'm not sure whether that means, or why only certain mobs flash and some don't. What would be more clear is if the mob flashed white when blocking and flashed red when getting damaged.
+
+Suggestion for player (player's screen flashes red when player is damaged then
+fades out nicely, but combat would be more clear if):
+* 50% gray when armor damaged and you are not. In real life, falling or getting hit hard may cause you to see light even if you're not injured, so white seems intuitive. then fade similar to how red currently does.
+* 25% gray when blocking--I think shield can actually block 100% of damage on occasion, so this color could indicate getting hit but taking no damage (I'm not sure whether this is really possible with just armor but I think it is with shields) unless there is a sound, in which case the color may not be needed (or better yet, wield the shield on the screen for 0.25 sec).
+
+(1:07 PM ET) According to that pattern I suggested, the clam would flash gray when attacked while closed, since it apparently deflects 100% of damage at that time (it currently doesn't flash at all when closed and they are usually closed, which is confusing--a player on my server thought clams were invincible).
+
+### Animations
+
+For combat visuals, the player and mob should have the same animation, so that virtually limitless patterns (combinations of moves and ducking, transitions, interruptions of attack swings in any order) of combat can be done procedurally without significant work on the part of the server. See [issues with the kc_modpack tag on Enliven](https://github.com/Poikilos/Enliven/issues?q=is%3Aissue+is%3Aopen+label%3Akc_modpack) for more.
+
+Implement at least the following sequences for the player and matching ones every hostile mob: idle, idle weapon drawn, duck, high block, get damaged, low block, dodge, leap, walk, run, high attack, low attack, provoke, death
+- Some of these will only require 1-3 frames such as the blocks and attacks
+  - Irrlicht could transition between any of these including interruptions such as if an attack is interrupted by a block.
+  - See if there is really a bug in Irrlicht or only in Luanti's use of it (frame blending is disabled by default due to a supposed Irrlicht bug that may be fixed in a dev version), perhaps such as the client controlling the model and the server having an inconsistent view of it, which can happen with the camera:
+    - [Severe camera issues in multiplayer using set_look_horizontal, move_to, and set_pos #11502](https://github.com/luanti-org/luanti/issues/11502)
+  - Around 4 times as much functionality, but 1/20 of the frames in the B3D file!
+- Type-dependent: fly, swim, takeoff, land
+
+#### Use of assets
+
+1. Storing the models at 60fps never made sense, since Irrlicht does all frame blending. I could alter the animations as we go so that only the keyframes are kept so the files should be about half the size or less. I have found that reducing Big Red from 60fps to 6fps reduces the B3D file to about 1/2 of the size (I'm not sure why not smaller--maybe some type of compression is already done). However, some manual steps are needed to make sure that the end frames and start frames don't get crunched when scaling all keyframes in the Blender dopesheet. Many sequences can be reduce to 2 or 3 frames, or ONE frame (such as for poses), or at most 5 (such as for walking or certain attacks).
+
+2. Leveraging the client is a big part of any kind of server optimization. Ensure that the server only sends keyframe cycles instead of frame cycles, and definitely not send network traffic for every frame.
+   - Do some Irrlicht experiments with that (transitioning between arbitrary poses) in the b3view code.
+
+Some measure of interactivity, even just visual and/or audio cues, should be present (gamers notice there is something lacking). See "Consistent color flashes" and "Sounds".
+
+#### Mob head system
+Make a registration function that takes a static head model.
+- Normally make it a hollow block with 1px thick (1/32 meter) outer part where the hollow part is head-sized so it is intuitively able to be used as a mask.
+
+
+#### Bone-based animation
+- [ ] Make the mob look at you when you are its target regardless of the direction it is walking (The direction its body is facing should be different from the head if not walking toward you but targeting you).
+
+#### Visuals for strike outcomes
+A stopgap (possibly that could be kept even after new sequences are implemented) feature to make the battle process more understandable visually (somehow represent what is happening in the code) is attack sprites (such as a big bite mark that appears in the air only for a flash when the creature attacks). Blocking and showing a shield sprite could also be done.
+
+[bite](kc/textures/kc_attack_bite_glow.png)
+[blade_slash](kc/textures/kc_attack_blade_slash.png)
+[claw_black](kc/textures/kc_attack_claw_black.png)
+[claw](kc/textures/kc_attack_claw_glow.png)
+
+- [ ] Make bone names consistent between mobs and the player.
+- [ ] Make b3view able to set attachment points by choosing a named bone (or if necessary, add a vertex and saving to an accompanying metadata file):
+  - A high or low attack can strike the correct part of the body.
+  - Having particle effects on the right part of the body or weapon also requires setting attachment points.
+    - Particles: See local file "*mobs_textures-same-names-as-basis.zip" e-mailed April 16, 2019:
+      mobs_blood.png, mobs_damage_stone.png, lott spider_blood.png, mobs_fireball.png
+      - [ ] Use the old Sapier animated version of the fireball.
+      - [ ] Allow setting the particle size (and size variance, lifespan, and lifespan variance?) See email: 4/17/19 11:51 AM ET
+
+### Sounds
+get hurt, attack, provoke [could also be for spell/skill like the identically-named animation sequence])
+
+#### Warcry
+[If war_cry is set, war cry plays every time you click the mob #269](https://github.com/Poikilos/Enliven/issues/269)
+- See also email 5/24/19 9:01 AM ET
+
+## Visuals for storytelling or multiplayer
+Sprites for emotes would be just as easy to implement (just little symbols similar to above but for emotions), even for role playing bosses/NPCs such as for minigames or dungeons. I may implement the option to show emote sprites on the player if what they type in chat contains an emote (such as :) or :smile:).
+
+### Brainstorms
+#### Node name ideas
+- Maker Table
+- War Table
+- Masterwork Foundry
+- Related words: Workshop, Mastery, Adept, Ace, Masterwork, Master, Guru, Grand, Maven, Engineer, Experiment, R&D, Study, Dabble, Trifle, Opus
